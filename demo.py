@@ -1,20 +1,4 @@
-"""
-Demo of HMR.
-
-Note that HMR requires the bounding box of the person in the image. The best performance is obtained when max length of the person in the image is roughly 150px. 
-
-When only the image path is supplied, it assumes that the image is centered on a person whose length is roughly 150px.
-Alternatively, you can supply output of the openpose to figure out the bbox and the right scale factor.
-
-Sample usage:
-
-# On images on a tightly cropped image around the person
-python -m demo --img_path data/im1963.jpg
-python -m demo --img_path data/coco1.png
-
-# On images, with openpose output
-python -m demo --img_path data/random.jpg --json_path data/random_keypoints.json
-"""
+# python -m demo --img_path data/random.jpg --json_path data/random_keypoints.json
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -25,6 +9,7 @@ import numpy as np
 
 import skimage.io as io
 import tensorflow as tf
+import cv2
 
 from src.util import renderer as vis_util
 from src.util import image as img_util
@@ -41,7 +26,7 @@ flags.DEFINE_string(
 def visualize(img, proc_param, joints, verts, cam):
     """
     Renders the result in original image coordinate frame.
-    """
+        """
     cam_for_render, vert_shifted, joints_orig = vis_util.get_original(
         proc_param, verts, cam, joints, img_size=img.shape[:2])
 
@@ -55,6 +40,7 @@ def visualize(img, proc_param, joints, verts, cam):
         vert_shifted, 60, cam=cam_for_render, img_size=img.shape[:2])
     rend_img_vp2 = renderer.rotated(
         vert_shifted, -60, cam=cam_for_render, img_size=img.shape[:2])
+    return rend_img_overlay
 
     import matplotlib.pyplot as plt
     # plt.ion()
@@ -90,8 +76,9 @@ def visualize(img, proc_param, joints, verts, cam):
     # ipdb.set_trace()
 
 
-def preprocess_image(img_path, json_path=None):
-    img = io.imread(img_path)
+def preprocess_image(img_path=None, img=None, json_path=None):
+    if img_path:
+        img = io.imread(img_path)
 
     if json_path is None:
         scale = 1.
@@ -114,14 +101,32 @@ def main(img_path, json_path=None):
     sess = tf.Session()
     model = RunModel(config, sess=sess)
 
-    input_img, proc_param, img = preprocess_image(img_path, json_path)
-    # Add batch dimension: 1 x D x D x 3
-    input_img = np.expand_dims(input_img, 0)
+    cap = cv2.VideoCapture(0)
 
-    joints, verts, cams, joints3d, theta = model.predict(
-        input_img, get_theta=True)
+    while True:
+        ret, frame = cap.read()
 
-    visualize(img, proc_param, joints[0], verts[0], cams[0])
+        if ret is None:
+            break
+
+        input_img, proc_param, img = preprocess_image(
+            None, frame, json_path)
+        input_img = np.expand_dims(input_img, 0)
+        joints, verts, cams, joints3d, theta = model.predict(
+            input_img, get_theta=True)
+        print(len(joints))
+        # print(joints)
+        print(joints3d)
+        ret = visualize(img, proc_param, joints[0], verts[0], cams[0])
+
+        cv2.imshow('camera capture', ret)
+
+        k = cv2.waitKey(1)
+        if k == 27:
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
